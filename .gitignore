@@ -1,0 +1,11 @@
+##PDF files
+*.pdf
+##Private keys
+*.pem
+##environment setup scripts
+env.py
+##ignore bootstrap elements
+NoSQL/static/assets/*
+SQL/static/assets/*
+##OS files
+.DS_Store
