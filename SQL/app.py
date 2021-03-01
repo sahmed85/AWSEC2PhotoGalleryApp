@@ -164,6 +164,10 @@ def login_page():
         #return the login page temple
         return render_template('login.html', login_status = True)
 
+# app route for sign up page
+@app.route('/signup', methods=['GET', 'POST'])
+def signup_page():
+    return render_template('signup.html')
 
 @app.route('/', methods=['GET'])
 def home_page():
@@ -212,32 +216,35 @@ def add_album():
         description: Endpoint to send new album.
         responses: Returns user to home page.
     """
-    if request.method == 'POST':
-        uploadedFileURL=''
-        file = request.files['imagefile']
-        name = request.form['name']
-        description = request.form['description']
+    if 'email' in session:
+        if request.method == 'POST':
+            uploadedFileURL=''
+            file = request.files['imagefile']
+            name = request.form['name']
+            description = request.form['description']
 
-        if file and allowed_file(file.filename):
-            albumID = uuid.uuid4()
-            
-            filename = file.filename
-            filenameWithPath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filenameWithPath)
-            
-            uploadedFileURL = s3uploading(str(albumID), filenameWithPath, "thumbnails");
+            if file and allowed_file(file.filename):
+                albumID = uuid.uuid4()
+                
+                filename = file.filename
+                filenameWithPath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filenameWithPath)
+                
+                uploadedFileURL = s3uploading(str(albumID), filenameWithPath, "thumbnails");
 
-            conn=get_database_connection()
-            cursor = conn.cursor ()
-            statement = f'''INSERT INTO photogallerydb.Album (albumID, name, description, thumbnailURL) VALUES ("{albumID}", "{name}", "{description}", "{uploadedFileURL}");'''
-            
-            result = cursor.execute(statement)
-            conn.commit()
-            conn.close()
+                conn=get_database_connection()
+                cursor = conn.cursor ()
+                statement = f'''INSERT INTO photogallerydb.Album (albumID, name, description, thumbnailURL) VALUES ("{albumID}", "{name}", "{description}", "{uploadedFileURL}");'''
+                
+                result = cursor.execute(statement)
+                conn.commit()
+                conn.close()
 
-        return redirect('/')
+            return redirect('/')
+        else:
+            return render_template('albumForm.html')
     else:
-        return render_template('albumForm.html')
+        return redirect(url_for('login_page'))
 
 
 
@@ -249,30 +256,33 @@ def view_photos(albumID):
         description: Endpoint to return an album.
         responses: Returns all the photos of a particular album.
     """
-    conn=get_database_connection()
-    cursor = conn.cursor ()
-    # Get title
-    statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
-    cursor.execute(statement)
-    albumMeta = cursor.fetchall()
-    
-    # Photos
-    statement = f'''SELECT photoID, albumID, title, description, photoURL FROM photogallerydb.Photo WHERE albumID="{albumID}";'''
-    cursor.execute(statement)
-    results = cursor.fetchall()
-    conn.close() 
-    
-    items=[]
-    for item in results:
-        photos={}
-        photos['photoID'] = item['photoID']
-        photos['albumID'] = item['albumID']
-        photos['title'] = item['title']
-        photos['description'] = item['description']
-        photos['photoURL'] = item['photoURL']
-        items.append(photos)
+    if 'email' in session:
+        conn=get_database_connection()
+        cursor = conn.cursor ()
+        # Get title
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+        cursor.execute(statement)
+        albumMeta = cursor.fetchall()
+        
+        # Photos
+        statement = f'''SELECT photoID, albumID, title, description, photoURL FROM photogallerydb.Photo WHERE albumID="{albumID}";'''
+        cursor.execute(statement)
+        results = cursor.fetchall()
+        conn.close() 
+        
+        items=[]
+        for item in results:
+            photos={}
+            photos['photoID'] = item['photoID']
+            photos['albumID'] = item['albumID']
+            photos['title'] = item['title']
+            photos['description'] = item['description']
+            photos['photoURL'] = item['photoURL']
+            items.append(photos)
 
-    return render_template('viewphotos.html', photos=items, albumID=albumID, albumName=albumMeta[0]['name'])
+        return render_template('viewphotos.html', photos=items, albumID=albumID, albumName=albumMeta[0]['name'])
+    else:
+        return redirect(url_for('login_page'))
 
 
 
@@ -288,43 +298,46 @@ def add_photo(albumID):
         description: Endpoint to send new photo.
         responses: Returns user to album page.
     """
-    if request.method == 'POST':    
-        uploadedFileURL=''
-        file = request.files['imagefile']
-        title = request.form['title']
-        description = request.form['description']
-        tags = request.form['tags']
+    if 'email' in session:
+        if request.method == 'POST':    
+            uploadedFileURL=''
+            file = request.files['imagefile']
+            title = request.form['title']
+            description = request.form['description']
+            tags = request.form['tags']
 
-        if file and allowed_file(file.filename):
-            photoID = uuid.uuid4()
-            filename = file.filename
-            filenameWithPath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filenameWithPath)            
-            
-            uploadedFileURL = s3uploading(filename, filenameWithPath);
-            
-            ExifData=getExifData(filenameWithPath)
+            if file and allowed_file(file.filename):
+                photoID = uuid.uuid4()
+                filename = file.filename
+                filenameWithPath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filenameWithPath)            
+                
+                uploadedFileURL = s3uploading(filename, filenameWithPath);
+                
+                ExifData=getExifData(filenameWithPath)
 
+                conn=get_database_connection()
+                cursor = conn.cursor ()
+                ExifDataStr = json.dumps(ExifData)
+                statement = f'''INSERT INTO photogallerydb.Photo (PhotoID, albumID, title, description, tags, photoURL, EXIF) VALUES ("{photoID}", "{albumID}", "{title}", "{description}", "{tags}", "{uploadedFileURL}", %s);'''
+                
+                result = cursor.execute(statement, (ExifDataStr,))
+                conn.commit()
+                conn.close()
+
+            return redirect(f'''/album/{albumID}''')
+        else:
             conn=get_database_connection()
             cursor = conn.cursor ()
-            ExifDataStr = json.dumps(ExifData)
-            statement = f'''INSERT INTO photogallerydb.Photo (PhotoID, albumID, title, description, tags, photoURL, EXIF) VALUES ("{photoID}", "{albumID}", "{title}", "{description}", "{tags}", "{uploadedFileURL}", %s);'''
-            
-            result = cursor.execute(statement, (ExifDataStr,))
-            conn.commit()
+            # Get title
+            statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+            cursor.execute(statement)
+            albumMeta = cursor.fetchall()
             conn.close()
 
-        return redirect(f'''/album/{albumID}''')
+            return render_template('photoForm.html', albumID=albumID, albumName=albumMeta[0]['name'])
     else:
-        conn=get_database_connection()
-        cursor = conn.cursor ()
-        # Get title
-        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
-        cursor.execute(statement)
-        albumMeta = cursor.fetchall()
-        conn.close()
-
-        return render_template('photoForm.html', albumID=albumID, albumName=albumMeta[0]['name'])
+        return redirect(url_for('login_page'))
 
 
 
@@ -336,43 +349,46 @@ def view_photo(albumID, photoID):
         description: Endpoint to return a photo.
         responses: Returns a photo from a particular album.
     """ 
-    conn=get_database_connection()
-    cursor = conn.cursor ()
+    if 'email' in session:
+        conn=get_database_connection()
+        cursor = conn.cursor ()
 
-    # Get title
-    statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
-    cursor.execute(statement)
-    albumMeta = cursor.fetchall()
+        # Get title
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+        cursor.execute(statement)
+        albumMeta = cursor.fetchall()
 
-    statement = f'''SELECT * FROM photogallerydb.Photo WHERE albumID="{albumID}" and photoID="{photoID}";'''
-    cursor.execute(statement)
-    results = cursor.fetchall()
-    conn.close()
+        statement = f'''SELECT * FROM photogallerydb.Photo WHERE albumID="{albumID}" and photoID="{photoID}";'''
+        cursor.execute(statement)
+        results = cursor.fetchall()
+        conn.close()
 
-    if len(results) > 0:
-        photo={}
-        photo['photoID'] = results[0]['photoID']
-        photo['title'] = results[0]['title']
-        photo['description'] = results[0]['description']
-        photo['tags'] = results[0]['tags']
-        photo['photoURL'] = results[0]['photoURL']
-        photo['EXIF']=json.loads(results[0]['EXIF'])
+        if len(results) > 0:
+            photo={}
+            photo['photoID'] = results[0]['photoID']
+            photo['title'] = results[0]['title']
+            photo['description'] = results[0]['description']
+            photo['tags'] = results[0]['tags']
+            photo['photoURL'] = results[0]['photoURL']
+            photo['EXIF']=json.loads(results[0]['EXIF'])
 
-        createdAt = datetime.strptime(str(results[0]['createdAt']), "%Y-%m-%d %H:%M:%S")
-        updatedAt = datetime.strptime(str(results[0]['updatedAt']), "%Y-%m-%d %H:%M:%S")
+            createdAt = datetime.strptime(str(results[0]['createdAt']), "%Y-%m-%d %H:%M:%S")
+            updatedAt = datetime.strptime(str(results[0]['updatedAt']), "%Y-%m-%d %H:%M:%S")
 
-        createdAt_UTC = timezone("UTC").localize(createdAt)
-        updatedAt_UTC = timezone("UTC").localize(updatedAt)
+            createdAt_UTC = timezone("UTC").localize(createdAt)
+            updatedAt_UTC = timezone("UTC").localize(updatedAt)
 
-        photo['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
-        photo['updatedAt']=updatedAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
-        
-        tags=photo['tags'].split(',')
-        exifdata=photo['EXIF']
-        
-        return render_template('photodetail.html', photo=photo, tags=tags, exifdata=exifdata, albumID=albumID, albumName=albumMeta[0]['name'])
+            photo['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
+            photo['updatedAt']=updatedAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
+            
+            tags=photo['tags'].split(',')
+            exifdata=photo['EXIF']
+            
+            return render_template('photodetail.html', photo=photo, tags=tags, exifdata=exifdata, albumID=albumID, albumName=albumMeta[0]['name'])
+        else:
+            return render_template('photodetail.html', photo={}, tags=[], exifdata={}, albumID=albumID, albumName="")
     else:
-        return render_template('photodetail.html', photo={}, tags=[], exifdata={}, albumID=albumID, albumName="")
+        return redirect(url_for('login_page'))
 
 
 
@@ -384,26 +400,29 @@ def search_album_page():
         description: Endpoint to return all the matching albums.
         responses: Returns all the albums based on a particular query.
     """ 
-    query = request.args.get('query', None)
+    if 'email' in session:
+        query = request.args.get('query', None)
 
-    conn=get_database_connection()
-    cursor = conn.cursor ()
-    statement = f'''SELECT * FROM photogallerydb.Album WHERE name LIKE '%{query}%' UNION SELECT * FROM photogallerydb.Album WHERE description LIKE '%{query}%';'''
-    cursor.execute(statement)
+        conn=get_database_connection()
+        cursor = conn.cursor ()
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE name LIKE '%{query}%' UNION SELECT * FROM photogallerydb.Album WHERE description LIKE '%{query}%';'''
+        cursor.execute(statement)
 
-    results = cursor.fetchall()
-    conn.close()
+        results = cursor.fetchall()
+        conn.close()
 
-    items=[]
-    for item in results:
-        album={}
-        album['albumID'] = item['albumID']
-        album['name'] = item['name']
-        album['description'] = item['description']
-        album['thumbnailURL'] = item['thumbnailURL']
-        items.append(album)
+        items=[]
+        for item in results:
+            album={}
+            album['albumID'] = item['albumID']
+            album['name'] = item['name']
+            album['description'] = item['description']
+            album['thumbnailURL'] = item['thumbnailURL']
+            items.append(album)
 
-    return render_template('searchAlbum.html', albums=items, searchquery=query)
+        return render_template('searchAlbum.html', albums=items, searchquery=query)
+    else:
+        return redirect(url_for('login_page'))
 
 
 
@@ -415,27 +434,30 @@ def search_photo_page(albumID):
         description: Endpoint to return all the matching photos.
         responses: Returns all the photos from an album based on a particular query.
     """ 
-    query = request.args.get('query', None)
+    if 'email' in session:
+        query = request.args.get('query', None)
 
-    conn=get_database_connection()
-    cursor = conn.cursor ()
-    statement = f'''SELECT * FROM photogallerydb.Photo WHERE title LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE description LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE tags LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE EXIF LIKE '%{query}%' AND albumID="{albumID}";'''
-    cursor.execute(statement)
+        conn=get_database_connection()
+        cursor = conn.cursor ()
+        statement = f'''SELECT * FROM photogallerydb.Photo WHERE title LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE description LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE tags LIKE '%{query}%' AND albumID="{albumID}" UNION SELECT * FROM photogallerydb.Photo WHERE EXIF LIKE '%{query}%' AND albumID="{albumID}";'''
+        cursor.execute(statement)
 
-    results = cursor.fetchall()
-    conn.close()
+        results = cursor.fetchall()
+        conn.close()
 
-    items=[]
-    for item in results:
-        photo={}
-        photo['photoID'] = item['photoID']
-        photo['albumID'] = item['albumID']
-        photo['title'] = item['title']
-        photo['description'] = item['description']
-        photo['photoURL'] = item['photoURL']
-        items.append(photo)
+        items=[]
+        for item in results:
+            photo={}
+            photo['photoID'] = item['photoID']
+            photo['albumID'] = item['albumID']
+            photo['title'] = item['title']
+            photo['description'] = item['description']
+            photo['photoURL'] = item['photoURL']
+            items.append(photo)
 
-    return render_template('searchPhoto.html', photos=items, searchquery=query, albumID=albumID)
+        return render_template('searchPhoto.html', photos=items, searchquery=query, albumID=albumID)
+    else:
+        return redirect(url_for('login_page'))
 
 
 
