@@ -10,6 +10,7 @@ import exifread
 import json
 import uuid
 import boto3
+from botocore.exceptions import ClientError
 import bcrypt  
 import shortuuid
 import pymysql.cursors
@@ -52,7 +53,6 @@ def getExifData(path_name):
             val="%s"%(tags[tag])
             ExifData[key]=val
     return ExifData
-
 
 
 def s3uploading(filename, filenameWithPath, uploadType="photos"):
@@ -140,6 +140,7 @@ def checkUserExists(email):
         print(e.response['Error']['Message'])
         return False
 
+# this function inserts a new user into the DB
 def insert_newUser(firstname,lastname,email,hash_password):
     # connect to the DB and check if email exists in DB
     try:
@@ -152,6 +153,41 @@ def insert_newUser(firstname,lastname,email,hash_password):
     except ClientError as e:
         print(e.response['Error']['Message'])
         return False
+
+# this function will send an email to user from signup to verify account
+def send_confirmEmail(email):
+    # Create a new SES resource and specify a region
+    ses = boto3.client('ses',
+                        region_name = 'us-east-1', 
+                        aws_access_key_id=AWS_ACCESS_KEY,
+                        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+    SENDER = 'sahmed85@gatech.edu'
+    RECEIVER = email
+    # Try to send the email.
+    try:
+        #Provide the contents of the email.
+        response = ses.send_email(
+        Destination={
+            'ToAddresses': [RECEIVER],
+        },
+        Message={
+            'Body': {
+                'Text': {
+                    'Data': 'This is an email from AWS SES',
+                },
+            },
+            'Subject': {
+                'Data': 'Hi, I’m sending this email from AWS SES'
+            },
+         },
+         Source=SENDER
+        )
+    # Display an error if something goes wrong.
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        print("Email sent! Message ID:"),
+        print(response['MessageId'])
 
 @app.errorhandler(400)
 def bad_request(error):
@@ -217,6 +253,7 @@ def signup_page():
                 encoded_password = bytes(user_password, 'utf-8')
                 user_hashed_password = bcrypt.hashpw(encoded_password,bcrypt_salt)
                 insert_newUser(user_fname,user_lname,user_email,user_hashed_password)
+                send_confirmEmail(user_email)
                 return render_template('login.html', login_status = True)
             else:
                 #return an error that the user already exists
