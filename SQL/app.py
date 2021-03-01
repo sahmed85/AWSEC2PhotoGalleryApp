@@ -4,13 +4,16 @@ sys.path.append(os.path.abspath(os.path.join('..', 'utils')))
 from env import AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY, AWS_REGION, PHOTOGALLERY_S3_BUCKET_NAME, RDS_DB_HOSTNAME, RDS_DB_USERNAME, RDS_DB_PASSWORD, RDS_DB_NAME
 from flask import Flask, jsonify, abort, request, make_response, url_for
 from flask import render_template, redirect
+from flask import session, escape
 import time
 import exifread
 import json
 import uuid
-import boto3  
+import boto3
+import bcrypt  
+import shortuuid
 import pymysql.cursors
-from datetime import datetime
+from datetime import datetime, timedelta
 from pytz import timezone
 
 """
@@ -25,6 +28,10 @@ from pytz import timezone
 """
 
 app = Flask(__name__, static_url_path="")
+#Flask session data secrect key
+app.secret_key = '8Qs8yijqeXtPIxd'
+#Set the lifetime of the session before prompting relogin for 10min
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=1)
 
 UPLOAD_FOLDER = os.path.join(app.root_path,'static','media')
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
@@ -92,28 +99,27 @@ def send_email(email, body):
 
         return True
 
+def validate_user(email,password):
+    # connect to the DB and validate user credentials in user table
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        cursor.execute("SELECT * FROM photogallerydb.User WHERE email="+"'"+email+ "'" + ";")
+        results = cursor.fetchone()
+        validate_conn.close()
+        # if the result is empty, it means that user email in not in the DB
+        if(cursor.rowcount == 0):
+            return False
+        if(results['password'] == password):
+            return True
+        else:
+            return False
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
 
-"""
-    INSERT YOUR NEW FUNCTION HERE (IF NEEDED)
-"""
 
 
-
-
-
-"""
-"""
-
-"""
-    INSERT YOUR NEW ROUTE HERE (IF NEEDED)
-"""
-
-
-
-
-
-"""
-"""
 
 @app.errorhandler(400)
 def bad_request(error):
@@ -137,6 +143,26 @@ def not_found(error):
     """
     return make_response(jsonify({'error': 'Not found'}), 404)
 
+@app.errorhandler(401)
+def unauthenticaed(error):
+    return render_template('login.html', login_status = False)
+
+# app route for the login page
+@app.route('/login', methods=['GET','POST'])
+def login_page():
+    # Login Page route
+    if request.method == 'POST':
+        #handle the login parameters
+        user_email = request.form['username']
+        user_password = request.form['password']
+        if(validate_user(user_email,user_password)):
+            session['email'] = user_email
+            return redirect(url_for('home_page'))
+        else:
+            abort(401)
+    else:
+        #return the login page temple
+        return render_template('login.html', login_status = True)
 
 
 @app.route('/', methods=['GET'])
@@ -147,27 +173,30 @@ def home_page():
         description: Endpoint to return home page.
         responses: Returns all the albums.
     """
-    conn=get_database_connection()
-    cursor = conn.cursor ()
-    cursor.execute("SELECT * FROM photogallerydb.Album;")
-    results = cursor.fetchall()
-    conn.close()
-    
-    items=[]
-    for item in results:
-        album={}
-        album['albumID'] = item['albumID']
-        album['name'] = item['name']
-        album['description'] = item['description']
-        album['thumbnailURL'] = item['thumbnailURL']
+    if 'email' in session:
+        conn=get_database_connection()
+        cursor = conn.cursor ()
+        cursor.execute("SELECT * FROM photogallerydb.Album;")
+        results = cursor.fetchall()
+        conn.close()
+        
+        items=[]
+        for item in results:
+            album={}
+            album['albumID'] = item['albumID']
+            album['name'] = item['name']
+            album['description'] = item['description']
+            album['thumbnailURL'] = item['thumbnailURL']
 
-        createdAt = datetime.strptime(str(item['createdAt']), "%Y-%m-%d %H:%M:%S")
-        createdAt_UTC = timezone("UTC").localize(createdAt)
-        album['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y")
+            createdAt = datetime.strptime(str(item['createdAt']), "%Y-%m-%d %H:%M:%S")
+            createdAt_UTC = timezone("UTC").localize(createdAt)
+            album['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y")
 
-        items.append(album)
+            items.append(album)
 
-    return render_template('index.html', albums=items)
+        return render_template('index.html', albums=items)
+    else:
+        return redirect(url_for('login_page'))
 
 
 
@@ -411,4 +440,4 @@ def search_photo_page(albumID):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="127.0.0.1", port=5000)
