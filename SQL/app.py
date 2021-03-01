@@ -32,6 +32,8 @@ app = Flask(__name__, static_url_path="")
 app.secret_key = '8Qs8yijqeXtPIxd'
 #Set the lifetime of the session before prompting relogin for 10min
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=1)
+#bcrypt salt, randomly generated using bcrypt.gensalt()
+bcrypt_salt = b'$2b$12$SVKewoTf80SCXW/iZoRbLu'
 
 UPLOAD_FOLDER = os.path.join(app.root_path,'static','media')
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
@@ -110,7 +112,9 @@ def validate_user(email,password):
         # if the result is empty, it means that user email in not in the DB
         if(cursor.rowcount == 0):
             return False
-        if(results['password'] == password):
+        encoded_password = bytes(password, 'utf-8')
+        encoded_hashPassword = bytes(results['password'], 'utf-8')
+        if(bcrypt.checkpw(encoded_password,encoded_hashPassword)):
             return True
         else:
             return False
@@ -118,8 +122,36 @@ def validate_user(email,password):
         print(e.response['Error']['Message'])
         return False
 
+# this functions checks if the email is already in use
+def checkUserExists(email):
+    # connect to the DB and check if email exists in DB
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        cursor.execute("SELECT * FROM photogallerydb.User WHERE email="+"'"+email+ "'" + ";")
+        results = cursor.fetchone()
+        validate_conn.close()
+        # if the result is empty, it means that user email in not in the DB
+        if(cursor.rowcount == 0):
+            return False
+        else:
+            return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
 
-
+def insert_newUser(firstname,lastname,email,hash_password):
+    # connect to the DB and check if email exists in DB
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        insertStatement = "INSERT INTO `photogallerydb`.`User` (`userID`, `email`, `firstName`, `lastName`, `password`, `authenticated`) VALUES (uuid_short(),%s,%s,%s,%s,TRUE)"
+        cursor.execute(insertStatement,(email,firstname,lastname,hash_password))
+        validate_conn.commit()
+        validate_conn.close()
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
 
 @app.errorhandler(400)
 def bad_request(error):
@@ -167,7 +199,30 @@ def login_page():
 # app route for sign up page
 @app.route('/signup', methods=['GET', 'POST'])
 def signup_page():
-    return render_template('signup.html')
+    # Signup Page POST, add entry to DB and trigger email confirmation
+    if request.method == 'POST':
+        #handle the form and add to DB and trigger email confirmation
+        user_fname = request.form['firstname']
+        user_lname = request.form['lastname']
+        user_email = request.form['email']
+        user_password = request.form['password']
+        user_rpassword = request.form['password1']
+        if(user_password != user_rpassword):
+            #return an error that the passwords don't match
+            return make_response(jsonify({'error': 'Passwords Do Not Match'}), 400)
+        else:
+            # check if email exists already
+            if(checkUserExists(user_email) == False):
+                #add new user to DB and hash password using bcrypt
+                encoded_password = bytes(user_password, 'utf-8')
+                user_hashed_password = bcrypt.hashpw(encoded_password,bcrypt_salt)
+                insert_newUser(user_fname,user_lname,user_email,user_hashed_password)
+                return render_template('login.html', login_status = True)
+            else:
+                #return an error that the user already exists
+                return make_response(jsonify({'error': 'User Already Exists'}), 400)
+    else:
+        return render_template('signup.html')
 
 @app.route('/', methods=['GET'])
 def home_page():
