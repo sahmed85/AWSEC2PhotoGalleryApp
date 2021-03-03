@@ -16,7 +16,7 @@ import shortuuid
 import pymysql.cursors
 from datetime import datetime, timedelta
 from pytz import timezone
-
+from itsdangerous import URLSafeTimedSerializer
 """
     INSERT NEW LIBRARIES HERE (IF NEEDED)
 """
@@ -29,12 +29,16 @@ from pytz import timezone
 """
 
 app = Flask(__name__, static_url_path="")
-#Flask session data secrect key
+#Flask session data secret key
 app.secret_key = '8Qs8yijqeXtPIxd'
 #Set the lifetime of the session before prompting relogin for 10min
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=1)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
 #bcrypt salt, randomly generated using bcrypt.gensalt()
 bcrypt_salt = b'$2b$12$SVKewoTf80SCXW/iZoRbLu'
+#token gen salt is same as bcrypt (not best pratice but for testing only)
+token_salt = b'$2b$12$SVKewoTf80SCXW/iZoRbLu'
+# hostname of the server
+server_hostname = 'http://localhost:5000'
 
 UPLOAD_FOLDER = os.path.join(app.root_path,'static','media')
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
@@ -75,32 +79,6 @@ def get_database_connection():
                              cursorclass=pymysql.cursors.DictCursor)
     return conn
 
-def send_email(email, body):
-    try:
-        ses = boto3.client('ses', aws_access_key_id=AWS_ACCESS_KEY,
-                                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-                                region_name=REGION)
-        ses.send_email(
-            Source=os.getenv('SES_EMAIL_SOURCE'),
-            Destination={'ToAddresses': [email]},
-            Message={
-                'Subject': {'Data': 'Photo Gallery: Confirm Your Account'},
-                'Body': {
-                    'Text': {'Data': body}
-                }
-            }
-        )
-
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-
-        return False
-    else:
-        print("Email sent! Message ID:"),
-        print(response['MessageId'])
-
-        return True
-
 def validate_user(email,password):
     # connect to the DB and validate user credentials in user table
     try:
@@ -112,6 +90,8 @@ def validate_user(email,password):
         # if the result is empty, it means that user email in not in the DB
         if(cursor.rowcount == 0):
             return False
+        if(results['authenticated'] == False):
+            abort(401)
         encoded_password = bytes(password, 'utf-8')
         encoded_hashPassword = bytes(results['password'], 'utf-8')
         if(bcrypt.checkpw(encoded_password,encoded_hashPassword)):
@@ -146,7 +126,7 @@ def insert_newUser(firstname,lastname,email,hash_password):
     try:
         validate_conn = get_database_connection()
         cursor = validate_conn.cursor()
-        insertStatement = "INSERT INTO `photogallerydb`.`User` (`userID`, `email`, `firstName`, `lastName`, `password`, `authenticated`) VALUES (uuid_short(),%s,%s,%s,%s,TRUE)"
+        insertStatement = "INSERT INTO `photogallerydb`.`User` (`userID`, `email`, `firstName`, `lastName`, `password`, `authenticated`) VALUES (uuid_short(),%s,%s,%s,%s,FALSE)"
         cursor.execute(insertStatement,(email,firstname,lastname,hash_password))
         validate_conn.commit()
         validate_conn.close()
@@ -165,7 +145,9 @@ def send_confirmEmail(email):
     RECEIVER = email
     # Try to send the email.
     try:
-        #Provide the contents of the email.
+        # Generate the token to send to email
+        token = create_confirmToken(email)
+        # Provide the contents of the email.
         response = ses.send_email(
         Destination={
             'ToAddresses': [RECEIVER],
@@ -173,11 +155,11 @@ def send_confirmEmail(email):
         Message={
             'Body': {
                 'Text': {
-                    'Data': 'This is an email from AWS SES',
+                    'Data': 'Hi, I’m sending this confirm your account creation in the Photo Gallery App. Please follow this link:' + server_hostname + '/confirm/' + token,
                 },
             },
             'Subject': {
-                'Data': 'Hi, I’m sending this email from AWS SES'
+                'Data': 'Confirmation Token Photo Gallery App'
             },
          },
          Source=SENDER
@@ -188,6 +170,112 @@ def send_confirmEmail(email):
     else:
         print("Email sent! Message ID:"),
         print(response['MessageId'])
+
+# this function will create a confirmation token which the email function will call
+def create_confirmToken(email):
+    #utlize the same secret key as app session (probably not best practice but makes easier for testing)
+    serializer = URLSafeTimedSerializer(app.secret_key)
+    token = serializer.dumps(email,salt=token_salt)
+    return token
+
+# this function will check if token equals to email and not expired
+def check_confirmToken(token):
+    # de-encode the token received from user and check if email is equal
+    try:
+        serializer = URLSafeTimedSerializer(app.secret_key)
+        token_email = serializer.loads(token,salt=token_salt,max_age=600)
+        # print(token_email)
+        # now that we have the email from the token, we need to check if that user exists and set its auth column in User table to true
+        if(checkUserExists(token_email)):
+            # if true, then we can set the auth column to true
+            if(update_UserAuth(token_email)):
+                return True 
+            else:
+                return False
+    except Exception as e:
+        print(e)
+        print('expired token')
+
+# this function will run a query to update the auth column for a verified user
+def update_UserAuth(email):
+    # connect to DB and run a Update query for the user table with the email provided 
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        updateStatement = "UPDATE `photogallerydb`.`User` SET `authenticated` = TRUE WHERE (`email` = %s);"
+        cursor.execute(updateStatement,(email))
+        validate_conn.commit()
+        validate_conn.close()
+        return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
+
+# this function will update the photo info
+def updatePhoto(photoID,title,description,tags):
+    # connect to DB and run a Update query for the user table with the email provided 
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        updateStatement = "UPDATE photogallerydb.Photo SET title = %s, description = %s, tags = %s WHERE photoID = %s;"
+        cursor.execute(updateStatement,(title,description,tags,photoID))
+        validate_conn.commit()
+        validate_conn.close()
+        return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
+
+# this function will delete a photo 
+def deletePhoto(photoID):
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        deleteStatement = "DELETE FROM photogallerydb.Photo WHERE (photoID = %s);"
+        cursor.execute(deleteStatement,(photoID))
+        validate_conn.commit()
+        validate_conn.close()
+        return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
+
+# this function will delete a album, Constraint will CASCADE down the delete to photos
+def deleteAlbum(albumID):
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        deleteStatement = "DELETE FROM photogallerydb.Album WHERE (albumID = %s);"
+        cursor.execute(deleteStatement,(albumID))
+        validate_conn.commit()
+        validate_conn.close()
+        return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
+
+# this function will delete a user
+# need to delete user data, which is setup in MySQL to CASCADE on delete for all linked data
+def deleteUser(email):
+    #before we remove the Users entry in the table we need to delete its Album
+    try:
+        validate_conn = get_database_connection()
+        cursor = validate_conn.cursor()
+        deleteStatement = "DELETE FROM photogallerydb.User WHERE (email = %s);"
+        cursor.execute(deleteStatement,(email))
+        validate_conn.commit()
+        validate_conn.close()
+        return True
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+        return False
+
+
+
+
+
+###############################################################################################################
+# Application Handling
 
 @app.errorhandler(400)
 def bad_request(error):
@@ -213,7 +301,7 @@ def not_found(error):
 
 @app.errorhandler(401)
 def unauthenticaed(error):
-    return render_template('login.html', login_status = False)
+    return render_template('login.html', login_status = "Your account has not been verified. Please check your email!")
 
 # app route for the login page
 @app.route('/login', methods=['GET','POST'])
@@ -227,10 +315,10 @@ def login_page():
             session['email'] = user_email
             return redirect(url_for('home_page'))
         else:
-            abort(401)
+            return render_template('login.html', login_status = 'Incorrect Username or Password. Try again!')
     else:
         #return the login page temple
-        return render_template('login.html', login_status = True)
+        return render_template('login.html', login_status = 'Please login using your email and password.')
 
 # app route for sign up page
 @app.route('/signup', methods=['GET', 'POST'])
@@ -254,12 +342,37 @@ def signup_page():
                 user_hashed_password = bcrypt.hashpw(encoded_password,bcrypt_salt)
                 insert_newUser(user_fname,user_lname,user_email,user_hashed_password)
                 send_confirmEmail(user_email)
-                return render_template('login.html', login_status = True)
+                return render_template('login.html', login_status = 'Account created! Please verify your account from your email.')
             else:
                 #return an error that the user already exists
                 return make_response(jsonify({'error': 'User Already Exists'}), 400)
     else:
         return render_template('signup.html')
+
+# app route for confirmation from email
+@app.route('/confirm/<string:tokenID>', methods=['GET'])
+def confirm_page(tokenID):
+    #GET request with the token passed in needs to be confirmed
+    user_token = tokenID
+    if(check_confirmToken(user_token)):
+        # If token is correct and table is updated then redirect user to login page
+        return render_template('login.html', login_status = "Account confirmed! Please login using your email and password.")
+    else:
+        abort(404)
+    
+
+# app route for deleting the User account
+@app.route('/deleteaccount', methods=['GET'])
+def delete_page():
+    # GET request for deleting account from top navigation
+    # session already stores the user email so we can use that to traverse the delete users data
+    if(deleteUser(session['email'])):
+        # if this function returns true, destroy the session and then navigate to the login page
+        session.pop('email', default=None)
+        return redirect(url_for('login_page'))
+    else:
+        return make_response(jsonify({'error': 'Bad request'}), 400)
+
 
 @app.route('/', methods=['GET'])
 def home_page():
@@ -272,7 +385,8 @@ def home_page():
     if 'email' in session:
         conn=get_database_connection()
         cursor = conn.cursor ()
-        cursor.execute("SELECT * FROM photogallerydb.Album;")
+        selectStatement = "SELECT * FROM photogallerydb.Album WHERE email=%s;"
+        cursor.execute(selectStatement,session['email'])
         results = cursor.fetchall()
         conn.close()
         
@@ -326,8 +440,7 @@ def add_album():
 
                 conn=get_database_connection()
                 cursor = conn.cursor ()
-                statement = f'''INSERT INTO photogallerydb.Album (albumID, name, description, thumbnailURL) VALUES ("{albumID}", "{name}", "{description}", "{uploadedFileURL}");'''
-                
+                statement = f'''INSERT INTO photogallerydb.Album (email,albumID, name, description, thumbnailURL) VALUES ("{session['email']}","{albumID}", "{name}", "{description}", "{uploadedFileURL}");'''
                 result = cursor.execute(statement)
                 conn.commit()
                 conn.close()
@@ -352,7 +465,7 @@ def view_photos(albumID):
         conn=get_database_connection()
         cursor = conn.cursor ()
         # Get title
-        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}" AND email="{session['email']}";'''
         cursor.execute(statement)
         albumMeta = cursor.fetchall()
         
@@ -422,7 +535,7 @@ def add_photo(albumID):
             conn=get_database_connection()
             cursor = conn.cursor ()
             # Get title
-            statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+            statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}" AND email="{session['email']}";'''
             cursor.execute(statement)
             albumMeta = cursor.fetchall()
             conn.close()
@@ -446,7 +559,7 @@ def view_photo(albumID, photoID):
         cursor = conn.cursor ()
 
         # Get title
-        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}";'''
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE albumID="{albumID}" AND email="{session['email']}";'''
         cursor.execute(statement)
         albumMeta = cursor.fetchall()
 
@@ -470,8 +583,8 @@ def view_photo(albumID, photoID):
             createdAt_UTC = timezone("UTC").localize(createdAt)
             updatedAt_UTC = timezone("UTC").localize(updatedAt)
 
-            photo['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
-            photo['updatedAt']=updatedAt_UTC.astimezone(timezone("US/Eastern")).strftime("%B %d, %Y at %-I:%M:%S %p")
+            photo['createdAt']=createdAt_UTC.astimezone(timezone("US/Eastern"))
+            photo['updatedAt']=updatedAt_UTC.astimezone(timezone("US/Eastern"))
             
             tags=photo['tags'].split(',')
             exifdata=photo['EXIF']
@@ -483,6 +596,53 @@ def view_photo(albumID, photoID):
         return redirect(url_for('login_page'))
 
 
+# this route will allow user to update their photo information
+@app.route('/album/<string:albumID>/editphoto.html/<string:photoID>', methods=['GET','POST'])
+def editphoto_page(albumID,photoID):
+    if 'email' in session:
+        # handle request type
+        if(request.method == 'POST'):
+            #handle the form inputs
+            new_title = request.form['newTitle']
+            new_description = request.form['newDescription']
+            new_tags = request.form['newTags']
+            if(updatePhoto(photoID,new_title,new_description,new_tags)):
+                return redirect('/album/' + albumID+'/photo/' + photoID)
+            else:
+                return make_response(jsonify({'error': 'Bad request'}), 400)
+        else:
+            return render_template('editphoto.html',photoID = photoID, albumID = albumID)
+    else:
+        return redirect(url_for('login_page'))
+
+# this route will allow user to delete their album and subsequently delete the photos
+# it is bad practice to make this delete functionality a GET but I am a bit lazy      
+@app.route('/album/deleteAlbum/<string:albumID>', methods=['GET'])
+def deleteAlbum_page(albumID):
+    if 'email' in session:
+        #handle the GET request; Remember this bad practice in general, we should make this a DELETE request handle
+        if(deleteAlbum(albumID)):
+            #deleted album 
+            return redirect('/')
+        else:
+            return make_response(jsonify({'error': 'Bad request'}), 400)
+    else:
+        return redirect(url_for('login_page'))
+
+
+# this route will allow user to delete their photo
+# it is bad practice to make this delete functionality a GET but I am a bit lazy 
+@app.route('/album/<string:albumID>/deletephoto/<string:photoID>', methods=['GET'])
+def deletephoto_page(albumID,photoID):
+    if 'email' in session:
+        #handle the GET request; Remember this bad practice in general, we should make this a DELETE request handle
+        if(deletePhoto(photoID)):
+            # deleted photo successfully
+            return redirect('/album/' + albumID)
+        else:
+            return make_response(jsonify({'error': 'Bad request'}), 400)
+    else:
+        return redirect(url_for('login_page'))
 
 @app.route('/album/search', methods=['GET'])
 def search_album_page():
@@ -497,7 +657,7 @@ def search_album_page():
 
         conn=get_database_connection()
         cursor = conn.cursor ()
-        statement = f'''SELECT * FROM photogallerydb.Album WHERE name LIKE '%{query}%' UNION SELECT * FROM photogallerydb.Album WHERE description LIKE '%{query}%';'''
+        statement = f'''SELECT * FROM photogallerydb.Album WHERE name LIKE '%{query}%' AND email="{session['email']}" UNION SELECT * FROM photogallerydb.Album WHERE description LIKE '%{query}%' AND email="{session['email']}";'''
         cursor.execute(statement)
 
         results = cursor.fetchall()

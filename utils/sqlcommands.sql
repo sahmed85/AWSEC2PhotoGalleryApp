@@ -19,7 +19,7 @@ CREATE TABLE `Album` (
   `thumbnailURL` TEXT NOT NULL,
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`albumID`),
-  FOREIGN KEY (`email`) REFERENCES `User`(`email`)
+  FOREIGN KEY (`email`) REFERENCES `User`(`email`) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE `Photo` (

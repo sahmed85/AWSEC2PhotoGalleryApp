@@ -34,11 +34,7 @@
                         <!-- Blog Grid Content -->
                         <div class="blog-grid-content">
                            <h2 class="blog-grid-title-lg">Login</h2>
-                           {% if login_status == false %}
-                                <h5 style="color: red;">Username or Password is incorrect. Try again!</h5>
-                           {% else %}
-                                <h5>Enter your email and password to login.</h5> 
-                           {% endif %}
+                           <h5 style="color: red;">{{login_status}}</h5>
                            <form id="loginform" method='post' action="/login" enctype="multipart/form-data">
                               <input type="text" name="username" id="username" class="form-control" placeholder="Enter Email">
                               <br>
