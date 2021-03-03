@@ -17,16 +17,7 @@ import pymysql.cursors
 from datetime import datetime, timedelta
 from pytz import timezone
 from itsdangerous import URLSafeTimedSerializer
-"""
-    INSERT NEW LIBRARIES HERE (IF NEEDED)
-"""
 
-
-
-
-
-"""
-"""
 
 app = Flask(__name__, static_url_path="")
 #Flask session data secret key
