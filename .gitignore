@@ -8,6 +8,8 @@ env.py
 ##ignore bootstrap elements
 NoSQL/static/*
 SQL/static/*
+utils/__pycache__/*
 ##OS files py cahce files
-.pyc
-.DS_Store
+*.pyc
+*.DS_Store
+
