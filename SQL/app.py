@@ -1,7 +1,7 @@
 #!flask/bin/python
 import sys, os
 sys.path.append(os.path.abspath(os.path.join('..', 'utils')))
-from env import AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY, AWS_REGION, PHOTOGALLERY_S3_BUCKET_NAME, RDS_DB_HOSTNAME, RDS_DB_USERNAME, RDS_DB_PASSWORD, RDS_DB_NAME
+from env import AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY, AWS_REGION, PHOTOGALLERY_S3_BUCKET_NAME, RDS_DB_HOSTNAME, RDS_DB_USERNAME, RDS_DB_PASSWORD, RDS_DB_NAME, SERVER_HOSTNAME
 from flask import Flask, jsonify, abort, request, make_response, url_for
 from flask import render_template, redirect
 from flask import session, escape
@@ -29,7 +29,7 @@ bcrypt_salt = b'$2b$12$SVKewoTf80SCXW/iZoRbLu'
 #token gen salt is same as bcrypt (not best pratice but for testing only)
 token_salt = b'$2b$12$SVKewoTf80SCXW/iZoRbLu'
 # hostname of the server
-server_hostname = 'http://localhost:5000'
+server_hostname = SERVER_HOSTNAME
 
 UPLOAD_FOLDER = os.path.join(app.root_path,'static','media')
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
@@ -427,7 +427,7 @@ def add_album():
                 filenameWithPath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filenameWithPath)
                 
-                uploadedFileURL = s3uploading(str(albumID), filenameWithPath, "thumbnails");
+                uploadedFileURL = s3uploading(str(albumID), filenameWithPath, "thumbnails")
 
                 conn=get_database_connection()
                 cursor = conn.cursor ()
