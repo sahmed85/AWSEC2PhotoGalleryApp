@@ -2,10 +2,14 @@
 *.pdf
 ##Private keys
 *.pem
+*.ppk
 ##environment setup scripts
 env.py
 ##ignore bootstrap elements
-NoSQL/static/assets/*
-SQL/static/assets/*
-##OS files
-.DS_Store
+NoSQL/static/*
+SQL/static/*
+utils/__pycache__/*
+##OS files py cahce files
+*.pyc
+*.DS_Store
+

@@ -61,6 +61,26 @@
                     </div>
                     <!--========== BLOG SIDEBAR ==========-->
                     <div class="col-md-3">
+                        <!-- Update Sidebar-->
+                        <div class="blog-sidebar">
+                            <div class="blog-sidebar-heading">
+                                <i class="glyphicon glyphicon-edit"></i>
+                                <h4 class="blog-sidebar-heading-title">Edit</h4>
+                            </div>
+                            <div class="blog-sidebar-content">
+                                <button type="button" class="btn btn-secondary"><a href="/album/{{albumID}}/editphoto.html/{{photoID}}">Edit Information </a> </button>
+                            </div>
+                        </div>
+                        <!-- Delete Sidebar-->
+                        <div class="blog-sidebar">
+                            <div class="blog-sidebar-heading">
+                                <i class="glyphicon glyphicon-trash"></i>
+                                <h4 class="blog-sidebar-heading-title">Delete</h4>
+                            </div>
+                            <div class="blog-sidebar-content">
+                                <button type="button" class="btn btn-danger" onclick="alert('Deleting Photo!')"> <a href="/album/{{albumID}}/deletephoto/{{photo.photoID}}">Delete Photo</a></button>
+                            </div>
+                        </div>
                         <!-- Blog Sidebar -->
                         <div class="blog-sidebar">
                             <div class="blog-sidebar-heading"> <i class="blog-sidebar-heading-icon icon-paperclip"></i>

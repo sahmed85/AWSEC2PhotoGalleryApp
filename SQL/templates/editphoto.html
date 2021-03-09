@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<!-- HEAD -->
+<head>
+<meta charset="utf-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Photo Gallery</title>
+<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link href='https://fonts.googleapis.com/css?family=Roboto:100,400,700,500,300,300italic' rel='stylesheet' type='text/css'>
+<link href='https://fonts.googleapis.com/css?family=Droid+Serif:400,400italic,700,700italic' rel='stylesheet' type='text/css'>
+<link href="/assets/plugins/bootstrap/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+<link href="/assets/plugins/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css" />
+<link href="/assets/plugins/et-line/et-line.css" rel="stylesheet" type="text/css" />
+<link href="/assets/plugins/themify/themify.css" rel="stylesheet" type="text/css" />
+<link href="/assets/plugins/cubeportfolio/css/cubeportfolio.min.css" rel="stylesheet" type="text/css" />
+<link href="/assets/css/global.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" src="/assets/plugins/jquery.min.js"></script>
+
+</head>
+<!-- END HEAD -->
+<!-- BEGIN BODY -->
+<body>
+
+<!-- WRAPPER -->
+<div class="wrapper">
+    
+    
+    <!--========== BACKGROUND COLOR SKY LIGHT ==========-->
+    <div class="bg-color-sky-light">
+        <br>
+    <center><h2>Photo Gallery</h2>
+    <br>
+    <div id="userdata-container"></div><br>
+    <a href="/">Home</a>
+    <br><br>
+    </center>
+        <!--========== PAGE CONTENT ==========-->
+        <div class="content-sm container">
+            <div class="row">
+                <div class="col-md-9 md-margin-b-50">
+                    <!-- Blog Grid -->
+                    <article class="blog-grid margin-b-30" id="viewphoto-container">
+                        <!-- Image -->
+                        
+                        <div class="blog-grid-content"> 
+                            <form name='updateForm' method="POST" action="/album/{{albumID}}/editphoto.html/{{photoID}}">
+                                <h2> Title </h2> 
+                                <input type="text" name="newTitle" id="newTitle" class="form-control"> <br> 
+                                <h2> Description </h2><textarea name="newDescription" id="newDescription" class="form-control" rows="3"></textarea> <br> 
+                                <h2> Tags </h2><input type="text" name="newTags" id="newTags" class="form-control"> <br> 
+                                <!-- <button type="submit" class="btn btn-primary"> Update </button>  -->
+                                <input type="submit" value="Update">
+                            </form>
+                        </div>
+                        <!-- End Blog Grid Content -->
+                    </article>
+                    <!-- End Blog Grid -->
+
+                    
+                </div>
+
+                <!--========== BLOG SIDEBAR ==========-->
+                <div class="col-md-3">
+                    
+
+                    <!-- Delete Sidebadr-->
+                    <div class="blog-sidebar">
+                        <div class="blog-sidebar-heading">
+                            <i class="glyphicon glyphicon-trash"></i>
+                            <h4 class="blog-sidebar-heading-title">Delete</h4>
+                        </div>
+                        <div class="blog-sidebar-content">
+                            <button type="button" class="btn btn-danger" onclick="alert('Deleting Photo!')"> <a href="/album/{{albumID}}/deletephoto/{{photoID}}">Delete Photo</a></button>
+                        </div>
+                    </div>
+                </div>
+                <!--========== END BLOG SIDEBAR ==========-->
+            </div>
+            <!--// end row -->
+        </div>
+        <!--========== END PAGE CONTENT ==========-->
+
+    </div>
+    <!--========== END BACKGROUND COLOR SKY LIGHT ==========-->
+    
+    
+</div>
+<!-- END WRAPPER -->
+
+<script type="text/javascript" src="/assets/plugins/bootstrap/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="/assets/plugins/cubeportfolio/js/jquery.cubeportfolio.min.js"></script>
+<script type="text/javascript" src="/assets/scripts/app.js"></script>
+<script type="text/javascript" src="/assets/scripts/portfolio/portfolio-4-col-grid.js"></script>
+</body>
+<!-- END BODY -->
+
+</html>
